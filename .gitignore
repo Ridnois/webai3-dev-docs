@@ -1,0 +1,7 @@
+.next
+node_modules
+.contentlayer
+.env
+.env.local
+.env.production
+*.log
