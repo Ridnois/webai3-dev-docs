@@ -20,11 +20,14 @@ function AuthContent() {
   const { connectors, connect, isPending: isConnecting } = useConnect();
   const { disconnect } = useDisconnect();
 
+  const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<Step>("connect");
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState<string | null>(
     authError === "unauthorized" ? "Your address is not authorized to access this site." : null
   );
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     disconnect();
@@ -118,22 +121,25 @@ function AuthContent() {
               Connect a wallet to verify your identity.
             </p>
             <div className="mt-5 grid gap-2">
-              {connectors.map((connector) => (
-                <button
-                  key={connector.uid}
-                  type="button"
-                  disabled={isConnecting}
-                  onClick={() => handleConnect(connector)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Wallet size={15} />
-                  {connector.name}
-                </button>
-              ))}
-              {connectors.length === 0 && (
+              {!mounted ? (
+                <div className="h-10 rounded-xl border border-[var(--border)] bg-[var(--muted)] animate-pulse" />
+              ) : connectors.length === 0 ? (
                 <p className="text-xs text-[var(--muted-foreground)] text-center py-3 border border-[var(--border)] rounded-xl">
                   No wallet detected. Install MetaMask or another wallet.
                 </p>
+              ) : (
+                connectors.map((connector) => (
+                  <button
+                    key={connector.uid}
+                    type="button"
+                    disabled={isConnecting}
+                    onClick={() => handleConnect(connector)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Wallet size={15} />
+                    {connector.name}
+                  </button>
+                ))
               )}
             </div>
           </div>
