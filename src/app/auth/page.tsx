@@ -4,46 +4,134 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount, useSignMessage, useConnect, useDisconnect } from "wagmi";
 import { SiweMessage } from "siwe";
-import { Lock, Wallet, ArrowRight, Loader2, Shield, ShieldOff } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  Lock,
+  Shield,
+  ShieldOff,
+  Wallet,
+} from "lucide-react";
 import { defaultChain } from "@/lib/wagmi";
 
-type Step = "connect" | "sign";
+type Step = "connect" | "sign" | "done";
 
-function UnauthorizedView({ onRetry }: { onRetry: () => void }) {
+/* ─── Ambient background ─────────────────────────────────────────────── */
+function Ambiance() {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--background)] px-4">
-      {/* Ambient glow */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-red-500/5 blur-[120px]" />
-      </div>
+    <div className="pointer-events-none fixed inset-0 overflow-hidden">
+      <div className="absolute -left-40 -top-40 size-[520px] rounded-full bg-[var(--foreground)]/[0.05] blur-[130px]" />
+      <div className="absolute -bottom-40 -right-40 size-[420px] rounded-full bg-[var(--muted-foreground)]/[0.07] blur-[110px]" />
+    </div>
+  );
+}
 
-      <div className="relative flex flex-col items-center text-center max-w-sm">
+/* ─── Step dots ──────────────────────────────────────────────────────── */
+const STEPS: { key: Step; label: string }[] = [
+  { key: "connect", label: "Connect" },
+  { key: "sign", label: "Sign" },
+  { key: "done", label: "Access" },
+];
+
+function StepDots({ current }: { current: Step }) {
+  const idx = STEPS.findIndex((s) => s.key === current);
+  return (
+    <div className="flex items-center justify-center gap-2 mb-8">
+      {STEPS.map((s, i) => {
+        const isComplete = i < idx;
+        const isActive = i === idx;
+        return (
+          <div key={s.key} className="flex items-center gap-2">
+            {i > 0 && (
+              <div
+                className={`h-px w-8 transition-colors duration-500 ${
+                  isComplete ? "bg-[var(--foreground)]" : "bg-[var(--border)]"
+                }`}
+              />
+            )}
+            <div
+              className={`flex size-7 items-center justify-center rounded-full text-xs font-semibold transition-all duration-300 ${
+                isComplete
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : isActive
+                  ? "border-2 border-[var(--foreground)] text-[var(--foreground)]"
+                  : "border border-[var(--border)] text-[var(--muted-foreground)]"
+              }`}
+            >
+              {isComplete ? <CheckCircle2 size={14} /> : i + 1}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Card shell ─────────────────────────────────────────────────────── */
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative rounded-2xl border border-[var(--border)]/80 bg-[var(--card)] overflow-hidden shadow-xl shadow-black/20">
+      {/* Inner radial gloss */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,oklch(1_0_0/0.06),transparent_60%),radial-gradient(ellipse_at_bottom_right,oklch(0.5_0_0/0.06),transparent_60%)]" />
+      <div className="relative p-7 sm:p-8">{children}</div>
+    </div>
+  );
+}
+
+/* ─── Step icon ──────────────────────────────────────────────────────── */
+function StepIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-5 flex size-11 items-center justify-center rounded-xl border border-[var(--border)]/60 bg-[var(--foreground)]/[0.06]">
+      {children}
+    </div>
+  );
+}
+
+/* ─── Error banner ───────────────────────────────────────────────────── */
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3">
+      <p className="text-xs text-red-400 leading-relaxed">{message}</p>
+    </div>
+  );
+}
+
+/* ─── Unauthorized full-screen ───────────────────────────────────────── */
+function UnauthorizedScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="relative min-h-dvh flex flex-col items-center justify-center bg-[var(--background)] px-4">
+      <Ambiance />
+      <div className="relative w-full max-w-sm text-center">
         {/* Icon */}
-        <div className="mb-6 flex items-center justify-center w-16 h-16 rounded-2xl border border-red-500/20 bg-red-500/10">
-          <ShieldOff size={28} className="text-red-400" />
+        <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border border-red-500/25 bg-red-500/10">
+          <ShieldOff size={30} className="text-red-400" />
         </div>
 
-        {/* Heading */}
         <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
           Access denied
         </h1>
         <p className="mt-3 text-sm text-[var(--muted-foreground)] leading-relaxed">
-          This wallet is not on the authorized list. If you believe this is a mistake, ask an admin to add your address.
+          This wallet is not on the authorized list. Contact an admin to get added.
         </p>
 
-        {/* Address hint */}
-        <div className="mt-6 w-full rounded-xl border border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-left">
-          <p className="text-[10px] uppercase tracking-widest font-mono text-[var(--muted-foreground)]">
-            Attempted with
-          </p>
-          <p className="mt-1 font-mono text-sm text-[var(--foreground)] break-all">
-            {typeof window !== "undefined"
-              ? new URLSearchParams(window.location.search).get("address") ?? "unknown"
-              : "unknown"}
-          </p>
+        {/* Divider */}
+        <div className="my-6 border-t border-[var(--border)]" />
+
+        {/* What to do */}
+        <div className="text-left rounded-xl border border-[var(--border)]/80 bg-[var(--muted)]/60 px-5 py-4 space-y-2.5">
+          {[
+            "Make sure you connected the right wallet",
+            "Ask a team admin to whitelist your address",
+            "Check that ALLOWED_ADDRESSES includes your address",
+          ].map((tip) => (
+            <div key={tip} className="flex items-start gap-2.5">
+              <div className="mt-1.5 size-1.5 rounded-full bg-[var(--muted-foreground)] shrink-0" />
+              <p className="text-xs text-[var(--muted-foreground)] leading-relaxed">{tip}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Actions */}
         <button
           type="button"
           onClick={onRetry}
@@ -52,14 +140,15 @@ function UnauthorizedView({ onRetry }: { onRetry: () => void }) {
           Try a different wallet
         </button>
 
-        <p className="mt-8 text-[11px] text-[var(--muted-foreground)] font-mono">
-          WebAI3 Dev Docs · Internal access only
+        <p className="mt-6 text-[11px] font-mono text-[var(--muted-foreground)]/60">
+          WebAI3 Dev Docs · Internal only
         </p>
       </div>
     </div>
   );
 }
 
+/* ─── Main auth content ──────────────────────────────────────────────── */
 function AuthContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -86,17 +175,16 @@ function AuthContent() {
 
   useEffect(() => {
     if (isConnected && address && step === "connect") setStep("sign");
-    if (!isConnected && step !== "connect") { setStep("connect"); setError(null); }
+    if (!isConnected && step === "sign") { setStep("connect"); setError(null); }
   }, [isConnected, address, step]);
 
   function handleRetry() {
     setUnauthorized(false);
     setError(null);
     setStep("connect");
-    // Clear the error param from the URL
     const url = new URL(window.location.href);
     url.searchParams.delete("error");
-    router.replace(url.pathname + url.search);
+    router.replace(url.pathname + (url.search || ""));
   }
 
   function handleConnect(connector: (typeof connectors)[number]) {
@@ -106,7 +194,11 @@ function AuthContent() {
       {
         onError: (err) => {
           const msg = err instanceof Error ? err.message : "Connection failed";
-          setError(msg.toLowerCase().includes("rejected") ? "Connection rejected." : msg);
+          setError(
+            msg.toLowerCase().includes("rejected") || msg.toLowerCase().includes("denied")
+              ? "Connection rejected. Please try again."
+              : msg
+          );
         },
       }
     );
@@ -141,158 +233,178 @@ function AuthContent() {
       if (!res.ok) {
         const data = await res.json();
         if (res.status === 403) {
-          setUnauthorized(true);
           disconnect();
+          setUnauthorized(true);
           return;
         }
         setError(data.error ?? "Verification failed");
         return;
       }
 
-      router.push(from === "/auth" ? "/" : from);
-      router.refresh();
+      setStep("done");
+      setTimeout(() => {
+        router.push(from === "/auth" ? "/" : from);
+        router.refresh();
+      }, 900);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Signature rejected";
-      setError(msg.toLowerCase().includes("rejected") ? "Signature rejected. Please try again." : msg);
+      setError(
+        msg.toLowerCase().includes("rejected") || msg.toLowerCase().includes("denied")
+          ? "Signature rejected. Please try again."
+          : msg
+      );
     } finally {
       setSigning(false);
     }
   }
 
-  if (unauthorized) {
-    return <UnauthorizedView onRetry={handleRetry} />;
-  }
+  if (unauthorized) return <UnauthorizedScreen onRetry={handleRetry} />;
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center bg-[var(--background)] px-4">
-      {/* Ambient glow */}
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-[var(--foreground)]/[0.04] blur-[120px]" />
-      </div>
+    <div className="relative min-h-dvh flex flex-col bg-[var(--background)]">
+      <Ambiance />
 
-      <div className="relative w-full max-w-sm">
-        {/* Header */}
-        <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-[var(--foreground)]">
-            <Lock size={20} className="text-[var(--background)]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-[var(--foreground)] tracking-tight">
-              WebAI3 Dev Docs
-            </h1>
-            <p className="text-sm text-[var(--muted-foreground)] mt-1">
-              Internal access — authorized wallets only
-            </p>
+      {/* Header */}
+      <header className="relative z-10 border-b border-[var(--border)]/60 bg-[var(--background)]/80 backdrop-blur-xl">
+        <div className="flex h-14 items-center px-5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-6 items-center justify-center rounded-md bg-[var(--foreground)]">
+              <Lock size={12} className="text-[var(--background)]" />
+            </div>
+            <span className="text-sm font-semibold text-[var(--foreground)]">WebAI3</span>
+            <span className="text-[0.6rem] font-mono font-semibold px-1.5 py-0.5 rounded bg-[var(--muted)] text-[var(--muted-foreground)] tracking-wider uppercase">
+              Dev Docs
+            </span>
           </div>
         </div>
+      </header>
 
-        {/* Steps indicator */}
-        <div className="mb-5 flex items-center justify-center gap-2">
-          {(["connect", "sign"] as const).map((s, i) => {
-            const idx = step === "connect" ? 0 : 1;
-            const isActive = i === idx;
-            const isDone = i < idx;
-            return (
-              <div key={s} className="flex items-center gap-2">
-                {i > 0 && (
-                  <div className={`h-px w-8 transition-colors ${isDone ? "bg-[var(--foreground)]" : "bg-[var(--border)]"}`} />
-                )}
-                <div className={`flex size-6 items-center justify-center rounded-full text-[11px] font-semibold transition-all ${
-                  isDone ? "bg-[var(--foreground)] text-[var(--background)]" :
-                  isActive ? "border-2 border-[var(--foreground)] text-[var(--foreground)]" :
-                  "border border-[var(--border)] text-[var(--muted-foreground)]"
-                }`}>
-                  {i + 1}
+      {/* Main */}
+      <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-14">
+        <div className="w-full max-w-md">
+          <StepDots current={step} />
+
+          <Card>
+            {/* Connect step */}
+            {step === "connect" && (
+              <div>
+                <StepIcon><Wallet size={20} className="text-[var(--foreground)]/80" /></StepIcon>
+                <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
+                  Connect your wallet
+                </h1>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">
+                  Connect a wallet to verify your identity and access the internal documentation.
+                </p>
+
+                <div className="mt-6 grid gap-2">
+                  {!mounted ? (
+                    <div className="h-11 rounded-xl border border-[var(--border)] bg-[var(--muted)] animate-pulse" />
+                  ) : connectors.length === 0 ? (
+                    <p className="rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/50 px-4 py-3 text-center text-xs text-[var(--muted-foreground)]">
+                      No wallet detected. Install MetaMask or another browser wallet.
+                    </p>
+                  ) : (
+                    connectors.map((connector) => (
+                      <button
+                        key={connector.uid}
+                        type="button"
+                        disabled={isConnecting}
+                        onClick={() => handleConnect(connector)}
+                        className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--border)]/80 bg-[var(--background)]/60 px-4 py-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 hover:bg-[var(--foreground)]/[0.07] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isConnecting
+                          ? <Loader2 size={15} className="animate-spin text-[var(--muted-foreground)]" />
+                          : <Wallet size={15} className="text-[var(--muted-foreground)]" />
+                        }
+                        Connect with {connector.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {error && <ErrorBanner message={error} />}
+
+                <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
+                  <Shield size={11} />
+                  <span>No funds are moved during sign-in</span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            )}
 
-        {/* Card */}
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6">
-          {step === "connect" && (
-            <div>
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--muted)]">
-                <Wallet size={18} className="text-[var(--foreground)]" />
-              </div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Connect your wallet</h2>
-              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                Connect a wallet to verify your identity.
-              </p>
-              <div className="mt-5 grid gap-2">
-                {!mounted ? (
-                  <div className="h-10 rounded-xl border border-[var(--border)] bg-[var(--muted)] animate-pulse" />
-                ) : connectors.length === 0 ? (
-                  <p className="text-xs text-[var(--muted-foreground)] text-center py-3 border border-[var(--border)] rounded-xl">
-                    No wallet detected. Install MetaMask or another wallet.
-                  </p>
-                ) : (
-                  connectors.map((connector) => (
-                    <button
-                      key={connector.uid}
-                      type="button"
-                      disabled={isConnecting}
-                      onClick={() => handleConnect(connector)}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--foreground)]/40 hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isConnecting ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
-                      {connector.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {step === "sign" && (
-            <div>
-              <div className="mb-5 flex size-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--muted)]">
-                <Shield size={18} className="text-[var(--foreground)]" />
-              </div>
-              <h2 className="text-base font-semibold text-[var(--foreground)]">Sign to authenticate</h2>
-              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-                Prove wallet ownership. No gas, no transaction.
-              </p>
-              <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--muted)] px-4 py-3">
-                <p className="text-[10px] uppercase tracking-widest text-[var(--muted-foreground)] font-mono">Connected as</p>
-                <p className="mt-1 font-mono text-sm text-[var(--foreground)]">
-                  {address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ""}
+            {/* Sign step */}
+            {step === "sign" && (
+              <div>
+                <StepIcon><Shield size={20} className="text-[var(--foreground)]/80" /></StepIcon>
+                <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
+                  Verify identity
+                </h1>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">
+                  Sign a message to prove wallet ownership. Free signature — no transaction, no gas.
                 </p>
+
+                <div className="mt-5 rounded-xl border border-[var(--border)]/60 bg-[var(--foreground)]/[0.04] px-4 py-3.5">
+                  <p className="text-[10px] uppercase tracking-[0.12em] font-mono text-[var(--muted-foreground)]">
+                    Signing as
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-[var(--foreground)]">
+                    {address ? `${address.slice(0, 10)}…${address.slice(-8)}` : ""}
+                  </p>
+                </div>
+
+                {error && <ErrorBanner message={error} />}
+
+                <button
+                  type="button"
+                  onClick={handleSign}
+                  disabled={signing}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--foreground)] px-5 py-3.5 text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {signing ? (
+                    <><Loader2 size={15} className="animate-spin" /> Waiting for signature…</>
+                  ) : (
+                    <>Sign in with Ethereum <ArrowRight size={15} /></>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { disconnect(); setStep("connect"); setError(null); }}
+                  className="mt-3 w-full text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors py-1"
+                >
+                  Use a different wallet
+                </button>
+
+                <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
+                  <Shield size={11} />
+                  <span>EIP-4361 (SIWE) — read-only, no gas cost</span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSign}
-                disabled={signing}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--foreground)] px-5 py-3 text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-60"
-              >
-                {signing ? (
-                  <><Loader2 size={15} className="animate-spin" /> Waiting for signature…</>
-                ) : (
-                  <>Sign in with Ethereum <ArrowRight size={15} /></>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => { disconnect(); setStep("connect"); setError(null); }}
-                className="mt-3 w-full text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-              >
-                Use a different wallet
-              </button>
-            </div>
-          )}
+            )}
 
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5">
-              <p className="text-xs text-red-400">{error}</p>
-            </div>
-          )}
+            {/* Done step */}
+            {step === "done" && (
+              <div className="text-center py-4">
+                <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-full bg-[var(--foreground)]/10 border border-[var(--foreground)]/15">
+                  <CheckCircle2 size={26} className="text-[var(--foreground)]" />
+                </div>
+                <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
+                  Access granted
+                </h1>
+                <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                  Redirecting you to the docs…
+                </p>
+                <div className="mt-5">
+                  <Loader2 size={18} className="mx-auto animate-spin text-[var(--muted-foreground)]" />
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <p className="mt-5 text-center text-xs text-[var(--muted-foreground)]/60 font-mono">
+            Internal use only · Authorized wallets only
+          </p>
         </div>
-
-        <p className="mt-5 text-center text-xs text-[var(--muted-foreground)]">
-          EIP-4361 · Read-only signature · No gas cost
-        </p>
-      </div>
+      </main>
     </div>
   );
 }
