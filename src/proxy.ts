@@ -9,7 +9,7 @@ function getSecret() {
   return new TextEncoder().encode(secret);
 }
 
-function getAllowed(): string[] {
+function getAllowedAddresses(): string[] {
   return (process.env.ALLOWED_ADDRESSES ?? "")
     .split(",")
     .map((a) => a.trim().toLowerCase())
@@ -19,7 +19,6 @@ function getAllowed(): string[] {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow auth routes and static assets
   if (
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api/auth") ||
@@ -41,7 +40,7 @@ export async function proxy(req: NextRequest) {
   try {
     const { payload } = await jwtVerify(token, getSecret());
     const address = ((payload.address as string) ?? "").toLowerCase();
-    const allowed = getAllowed();
+    const allowed = getAllowedAddresses();
 
     if (allowed.length > 0 && !allowed.includes(address)) {
       const url = req.nextUrl.clone();

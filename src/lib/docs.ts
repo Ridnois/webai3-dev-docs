@@ -27,6 +27,7 @@ export const navigation: NavSection[] = [
     items: [
       { title: "Pre-Release Checklist", href: "/docs/operations/pre-release" },
       { title: "Token Presale Checklist", href: "/docs/operations/landing-release-check" },
+      { title: "Mainnet Deploy Plan", href: "/docs/operations/deploy-plan" },
     ],
   },
   {

@@ -49,5 +49,7 @@ export function getAllowedAddresses(): string[] {
 }
 
 export function isAllowed(address: string): boolean {
-  return getAllowedAddresses().includes(address.toLowerCase());
+  const allowed = getAllowedAddresses();
+  if (allowed.length === 0) return true;
+  return allowed.includes(address.toLowerCase());
 }

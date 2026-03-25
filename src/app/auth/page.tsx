@@ -1,7 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { WagmiProvider } from "wagmi";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { wagmiConfig } from "@/lib/wagmi";
+import { useSearchParams } from "next/navigation";
 import { useAccount, useSignMessage, useConnect, useDisconnect } from "wagmi";
 import { SiweMessage } from "siwe";
 import {
@@ -72,7 +75,6 @@ function StepDots({ current }: { current: Step }) {
 function Card({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative rounded-2xl border border-[var(--border)]/80 bg-[var(--card)] overflow-hidden shadow-xl shadow-black/20">
-      {/* Inner radial gloss */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,oklch(1_0_0/0.06),transparent_60%),radial-gradient(ellipse_at_bottom_right,oklch(0.5_0_0/0.06),transparent_60%)]" />
       <div className="relative p-7 sm:p-8">{children}</div>
     </div>
@@ -103,7 +105,6 @@ function UnauthorizedScreen({ onRetry }: { onRetry: () => void }) {
     <div className="relative min-h-dvh flex flex-col items-center justify-center bg-[var(--background)] px-4">
       <Ambiance />
       <div className="relative w-full max-w-sm text-center">
-        {/* Icon */}
         <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-2xl border border-red-500/25 bg-red-500/10">
           <ShieldOff size={30} className="text-red-400" />
         </div>
@@ -115,10 +116,8 @@ function UnauthorizedScreen({ onRetry }: { onRetry: () => void }) {
           This wallet is not on the authorized list. Contact an admin to get added.
         </p>
 
-        {/* Divider */}
         <div className="my-6 border-t border-[var(--border)]" />
 
-        {/* What to do */}
         <div className="text-left rounded-xl border border-[var(--border)]/80 bg-[var(--muted)]/60 px-5 py-4 space-y-2.5">
           {[
             "Make sure you connected the right wallet",
@@ -148,11 +147,17 @@ function UnauthorizedScreen({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/* ─── Helpers ────────────────────────────────────────────────────────── */
+function safeRedirect(from: string): string {
+  // Prevent open redirect and auth→auth loops
+  if (!from || from === "/" || from.startsWith("/auth")) return "/";
+  return from;
+}
+
 /* ─── Main auth content ──────────────────────────────────────────────── */
 function AuthContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get("from") ?? "/";
+  const from = safeRedirect(searchParams.get("from") ?? "/");
   const authError = searchParams.get("error");
 
   const { address, isConnected } = useAccount();
@@ -168,23 +173,17 @@ function AuthContent() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  useEffect(() => {
-    disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Sync wallet connection state → step (wagmi manages its own reconnect)
   useEffect(() => {
     if (isConnected && address && step === "connect") setStep("sign");
     if (!isConnected && step === "sign") { setStep("connect"); setError(null); }
   }, [isConnected, address, step]);
 
   function handleRetry() {
+    disconnect();
     setUnauthorized(false);
     setError(null);
     setStep("connect");
-    const url = new URL(window.location.href);
-    url.searchParams.delete("error");
-    router.replace(url.pathname + (url.search || ""));
   }
 
   function handleConnect(connector: (typeof connectors)[number]) {
@@ -242,9 +241,10 @@ function AuthContent() {
       }
 
       setStep("done");
+      // Hard navigate: ensures the browser picks up the new session cookie
+      // and the proxy sees a fresh request — avoids router cache conflicts.
       setTimeout(() => {
-        router.push(from === "/auth" ? "/" : from);
-        router.refresh();
+        window.location.replace(from);
       }, 900);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Signature rejected";
@@ -409,10 +409,16 @@ function AuthContent() {
   );
 }
 
+const queryClient = new QueryClient();
+
 export default function AuthPage() {
   return (
-    <Suspense>
-      <AuthContent />
-    </Suspense>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <Suspense>
+          <AuthContent />
+        </Suspense>
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }
